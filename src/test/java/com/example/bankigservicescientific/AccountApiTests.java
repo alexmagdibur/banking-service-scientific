@@ -1,22 +1,13 @@
 package com.example.bankigservicescientific;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Needs the test PostgreSQL configured via BANK_DB_*; checks only read-only behaviour that does not depend on balances. */
-@SpringBootTest
-@AutoConfigureMockMvc
-class AccountApiTests {
-
-    @Autowired
-    MockMvc mvc;
+/** Read-only behaviour of the accounts endpoints. */
+class AccountApiTests extends AbstractIntegrationTest {
 
     @Test
     void listReturnsAccountsOrderedById() throws Exception {

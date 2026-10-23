@@ -2,47 +2,20 @@ package com.example.bankigservicescientific;
 
 import java.util.UUID;
 
-import tools.jackson.databind.JsonNode;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
+import tools.jackson.databind.JsonNode;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * Idempotency of POST /api/transfers and the read endpoints, checked against the real PostgreSQL.
- * Resets the test data before every test: use a dedicated test database.
- */
-@SpringBootTest
-@AutoConfigureMockMvc
-class IdempotencyAndReadApiTests {
-
-    private static final long INITIAL = 10_000_000;
-
-    @Autowired
-    MockMvc mvc;
-
-    @Autowired
-    JdbcClient jdbc;
+/** Idempotency of POST /api/transfers and the read endpoints, checked against the real PostgreSQL. */
+class IdempotencyAndReadApiTests extends AbstractIntegrationTest {
 
     @Autowired
     tools.jackson.databind.json.JsonMapper json;
-
-    @BeforeEach
-    void resetTestData() {
-        jdbc.sql("DELETE FROM transfers").update();
-        jdbc.sql("UPDATE accounts SET balance_minor = :b WHERE id IN (1001, 1002, 1003)").param("b", INITIAL).update();
-    }
 
     @Test
     void exactRepeatReturnsSameTransferWith200AndDebitsOnce() throws Exception {
@@ -163,20 +136,5 @@ class IdempotencyAndReadApiTests {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
         }
-    }
-
-    private ResultActions send(String key, long from, long to, long amount) throws Exception {
-        return mvc.perform(post("/api/transfers").header("Idempotency-Key", key)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"fromAccountId\":%d,\"toAccountId\":%d,\"amountMinor\":%d}".formatted(from, to, amount)));
-    }
-
-    private long balance(long id) {
-        return jdbc.sql("SELECT balance_minor FROM accounts WHERE id = :id").param("id", id)
-                .query(Long.class).single();
-    }
-
-    private long transferCount() {
-        return jdbc.sql("SELECT COUNT(*) FROM transfers").query(Long.class).single();
     }
 }

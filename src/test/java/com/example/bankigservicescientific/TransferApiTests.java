@@ -2,15 +2,8 @@ package com.example.bankigservicescientific;
 
 import java.util.UUID;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -18,28 +11,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration tests of POST /api/transfers against the real PostgreSQL configured via BANK_DB_*.
- * WARNING: before every test the transfers table is emptied and the three test accounts are reset
- * to 10 000 000 kopecks, so run these only against a dedicated test database.
+ * Integration tests of POST /api/transfers against the real PostgreSQL (see {@link AbstractIntegrationTest}).
  * Every test checks the actual database state, not only the HTTP response.
  */
-@SpringBootTest
-@AutoConfigureMockMvc
-class TransferApiTests {
-
-    private static final long INITIAL = 10_000_000;
-
-    @Autowired
-    MockMvc mvc;
-
-    @Autowired
-    JdbcClient jdbc;
-
-    @BeforeEach
-    void resetTestData() {
-        jdbc.sql("DELETE FROM transfers").update();
-        jdbc.sql("UPDATE accounts SET balance_minor = :b WHERE id IN (1001, 1002, 1003)").param("b", INITIAL).update();
-    }
+class TransferApiTests extends AbstractIntegrationTest {
 
     @Test
     void successfulTransferMovesMoneyExactlyOnceAndStoresRecord() throws Exception {
@@ -152,32 +127,10 @@ class TransferApiTests {
         assertThat(transferCount()).isEqualTo(2);
     }
 
-    private ResultActions send(String key, long from, long to, long amount) throws Exception {
-        return mvc.perform(post("/api/transfers").header("Idempotency-Key", key)
-                .contentType(MediaType.APPLICATION_JSON).content(body(from, to, amount)));
-    }
-
-    private static String body(long from, long to, long amount) {
-        return "{\"fromAccountId\":%d,\"toAccountId\":%d,\"amountMinor\":%d}".formatted(from, to, amount);
-    }
-
     /** No transfer was stored, the total is intact and the checked account still has the expected balance. */
     private void assertUnchanged(long expectedTotal, long expectedBalance, long accountId) {
         assertThat(transferCount()).isZero();
         assertThat(totalBalance()).isEqualTo(expectedTotal);
         assertThat(balance(accountId)).isEqualTo(expectedBalance);
-    }
-
-    private long balance(long id) {
-        return jdbc.sql("SELECT balance_minor FROM accounts WHERE id = :id").param("id", id)
-                .query(Long.class).single();
-    }
-
-    private long totalBalance() {
-        return jdbc.sql("SELECT SUM(balance_minor) FROM accounts").query(Long.class).single();
-    }
-
-    private long transferCount() {
-        return jdbc.sql("SELECT COUNT(*) FROM transfers").query(Long.class).single();
     }
 }

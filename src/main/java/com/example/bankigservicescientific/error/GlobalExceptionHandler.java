@@ -1,15 +1,24 @@
 package com.example.bankigservicescientific.error;
 
+import java.util.stream.Collectors;
+
 import com.example.bankigservicescientific.account.AccountNotFoundException;
+import com.example.bankigservicescientific.transfer.IdempotencyConflictException;
+import com.example.bankigservicescientific.transfer.InsufficientFundsException;
+import com.example.bankigservicescientific.transfer.InvalidTransferException;
+import com.example.bankigservicescientific.transfer.TransferNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -27,6 +36,47 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AccountNotFoundException.class)
     ResponseEntity<ApiError> accountNotFound(AccountNotFoundException e) {
         return respond(HttpStatus.NOT_FOUND, "ACCOUNT_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidTransferException.class)
+    ResponseEntity<ApiError> invalidTransfer(InvalidTransferException e) {
+        return respond(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+    }
+
+    @ExceptionHandler(InsufficientFundsException.class)
+    ResponseEntity<ApiError> insufficientFunds(InsufficientFundsException e) {
+        return respond(HttpStatus.CONFLICT, "INSUFFICIENT_FUNDS", e.getMessage());
+    }
+
+    @ExceptionHandler(TransferNotFoundException.class)
+    ResponseEntity<ApiError> transferNotFound(TransferNotFoundException e) {
+        return respond(HttpStatus.NOT_FOUND, "TRANSFER_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    ResponseEntity<ApiError> idempotencyConflict(IdempotencyConflictException e) {
+        return respond(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_CONFLICT", e.getMessage());
+    }
+
+    /** Backstop: the UNIQUE constraint on idempotency_key fired although the key lookup found nothing. */
+    @ExceptionHandler(DuplicateKeyException.class)
+    ResponseEntity<ApiError> duplicateKey(DuplicateKeyException e) {
+        log.warn("Unique constraint violated", e);
+        return respond(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key was already used");
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ResponseEntity<ApiError> invalidBody(MethodArgumentNotValidException e) {
+        String fields = e.getBindingResult().getFieldErrors().stream()
+                .map(f -> f.getField())
+                .distinct()
+                .collect(Collectors.joining(", "));
+        return respond(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid or missing fields: " + fields);
+    }
+
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    ResponseEntity<ApiError> missingHeader(MissingRequestHeaderException e) {
+        return respond(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Required header '" + e.getHeaderName() + "' is missing");
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

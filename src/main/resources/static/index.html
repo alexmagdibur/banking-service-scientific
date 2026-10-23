@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Research Bank API</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+    <h1>Research Bank API</h1>
+    <p class="note">Тестовые счета и вымышленные деньги. Данные хранятся в PostgreSQL, страница только показывает их.</p>
+</header>
+
+<main>
+    <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+
+    <section aria-labelledby="accounts-title">
+        <div class="section-head">
+            <h2 id="accounts-title">Счета</h2>
+            <button type="button" id="refresh-accounts">Обновить</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr><th>ID</th><th>Название</th><th class="num">Баланс</th></tr>
+                </thead>
+                <tbody id="accounts-body">
+                <tr><td colspan="3" class="empty">Загрузка…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section aria-labelledby="transfer-title">
+        <h2 id="transfer-title">Перевод</h2>
+        <form id="transfer-form" novalidate>
+            <label>Откуда
+                <select id="from-account" required></select>
+            </label>
+            <label>Куда
+                <select id="to-account" required></select>
+            </label>
+            <label>Сумма, ₽
+                <input id="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="100,00" required>
+            </label>
+            <button type="submit" id="submit-transfer">Перевести</button>
+        </form>
+        <p class="hint">Сумма от 0,01 до 10&nbsp;000,00 ₽ за одну операцию.</p>
+
+        <div id="pending" class="pending" hidden>
+            <p id="pending-text"></p>
+            <div class="actions">
+                <button type="button" id="check-result">Проверить результат</button>
+                <button type="button" id="forget-pending" class="secondary">Забыть запрос</button>
+            </div>
+        </div>
+    </section>
+
+    <section aria-labelledby="history-title">
+        <div class="section-head">
+            <h2 id="history-title">Последние переводы</h2>
+            <button type="button" id="refresh-transfers">Обновить</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr><th>Время</th><th>Откуда</th><th>Куда</th><th class="num">Сумма</th><th>Статус</th></tr>
+                </thead>
+                <tbody id="transfers-body">
+                <tr><td colspan="5" class="empty">Загрузка…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

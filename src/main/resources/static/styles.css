@@ -1,0 +1,177 @@
+:root {
+    --text: #1f2933;
+    --muted: #616e7c;
+    --border: #cbd2d9;
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --accent: #1f5fbf;
+    --ok-bg: #e3f6e8;
+    --ok-border: #5bb974;
+    --error-bg: #fde8e8;
+    --error-border: #e06666;
+    --warn-bg: #fff4d6;
+    --warn-border: #e0b030;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0 16px 32px;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.45;
+}
+
+header, main {
+    max-width: 860px;
+    margin: 0 auto;
+}
+
+h1 {
+    margin: 24px 0 4px;
+    font-size: 1.6rem;
+}
+
+h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.note, .hint {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+section {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.table-wrap {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+th, td {
+    padding: 6px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+th {
+    color: var(--muted);
+    font-weight: 600;
+}
+
+.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.empty {
+    color: var(--muted);
+    text-align: center;
+}
+
+form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    align-items: end;
+    margin-top: 10px;
+}
+
+label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+select, input {
+    padding: 7px 8px;
+    font: inherit;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #fff;
+}
+
+button {
+    padding: 8px 14px;
+    font: inherit;
+    color: #fff;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button.secondary {
+    color: var(--accent);
+    background: #fff;
+}
+
+button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.message, .pending {
+    padding: 10px 14px;
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+
+.message.ok {
+    background: var(--ok-bg);
+    border-color: var(--ok-border);
+}
+
+.message.error {
+    background: var(--error-bg);
+    border-color: var(--error-border);
+}
+
+.message.warn, .pending {
+    background: var(--warn-bg);
+    border-color: var(--warn-border);
+}
+
+.pending p {
+    margin: 0 0 10px;
+}
+
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+[hidden] {
+    display: none !important;
+}

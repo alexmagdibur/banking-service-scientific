@@ -161,3 +161,79 @@
 - Кнопка «Забыть запрос» (с подтверждением `confirm`) в браузере не нажималась.
 - Проверка выполнялась на временной БД; на БД пользователя (порт 5432) страница не открывалась — пользователю достаточно запустить приложение и открыть `/`.
 - Порт 8080 на машине пользователя занят службой NI Application Web Server: либо `SERVER_PORT=8090`, либо остановить службу.
+
+## Этап 7. Проверки состояния экземпляра — выполнен
+
+**Изменено / создано:**
+- `application.properties`:
+  - Actuator: основной порт приложения 8080 (`server.port`), внутренний порт управления `management.server.port=${MANAGEMENT_SERVER_PORT:8081}`; наружу открыт только endpoint `health` (`management.endpoints.web.exposure.include=health`), детали здоровья скрыты (`show-details=never`).
+  - `management.endpoint.health.probes.enabled=true` и `probes.add-additional-paths=true`: `/livez` и `/readyz` отдаются на **основном порту 8080** тем же HTTP-сервером, что и пользовательские запросы (проверено; на порту 8081 их нет, на 8080 нет `/actuator/**`).
+  - **Роль PostgreSQL.** Liveness (`/livez`) = только `livenessState`, от БД не зависит: недоступность БД не должна приводить к перезапуску Pod. Readiness (`/readyz`) = `readinessState` + `db`: без БД ни одна пользовательская операция не работает, поэтому экземпляр временно выводится из маршрутизации Service (не перезапускается), пока БД не вернётся. Решение одинаково для всех вариантов V0–V3.
+  - `spring.datasource.hikari.connection-timeout=${BANK_DB_CONNECTION_TIMEOUT_MS:3000}`: ожидание соединения ограничено 3 с (по умолчанию в Hikari 30 с), иначе проверка `/readyz` при недоступной БД зависала бы на 30 с и не укладывалась бы в тайм-аут probe. Побочный эффект: при исчерпании пула (10 соединений) запрос ждёт соединения не дольше 3 с и затем получает 503. Значение нужно зафиксировать на время исследования одинаковым для всех вариантов.
+  - Идентификатор экземпляра: `bank.instance-id=${INSTANCE_ID:${HOSTNAME:${COMPUTERNAME:unknown}}}` (в Kubernetes `HOSTNAME` = имя Pod; на Windows — имя компьютера); он добавлен в каждую строку журнала через `logging.pattern.level=%5p [${bank.instance-id}]` (полный формат логов — этап 8).
+- `instance/InstanceId.java` — компонент с ID, пишет в лог `Instance <id> is ready` при старте.
+- `instance/InstanceIdFilter.java` — заголовок `X-Instance-Id` во всех ответах основного порта (в том числе `/livez`, `/readyz`, ошибки и статические файлы).
+- `.env.example` — необязательные `INSTANCE_ID`, `MANAGEMENT_SERVER_PORT`, `BANK_DB_CONNECTION_TIMEOUT_MS`.
+- Тесты: `application-test.properties` — случайные порты (`server.port=0`, `management.server.port=0`) и `bank.instance-id=test-instance`; `HealthProbesTests` (5, реальный HTTP по обоим портам); `ReadinessWithoutDatabaseTests` (1: `DataSource` подменён так, что `getConnection()` бросает исключение).
+
+**Проверка** (временная PostgreSQL 18.4, порт 55432; приложение на стандартных портах 8080/8081):
+- `./mvnw.cmd -B test`: `Tests run: 44, Failures: 0, Errors: 0`, `BUILD SUCCESS`. Тесты проверяют: `/livez` и `/readyz` → 200 `{"status":"UP"}` на основном порту; `/actuator/health`, `.../liveness`, `.../readiness` → 200 на порту управления; `/actuator/health` и `/actuator/env` на основном порту → 404, `/actuator/env` на порту управления → 404; `db` входит в группу readiness и не входит в liveness; в ответах нет слов PostgreSQL/jdbc; заголовок `X-Instance-Id` есть у `/api/accounts`, ответа 404, `/livez`, `/readyz`, `/`; при «недоступной» БД `/readyz` → 503, `/livez` → 200, `/api/accounts` → 503 `SERVICE_UNAVAILABLE` без текста исключения, после снятия имитации `/readyz` снова 200.
+- Живая проверка (curl): в норме `8080/livez` 200, `8080/readyz` 200, `8080/api/accounts` 200, `8080/actuator/health` 404, `8081/actuator/health` 200 (`{"groups":["liveness","readiness"],"status":"UP"}`), `8081/actuator/env` 404, `8081/livez` 404; заголовок `X-Instance-Id: DESKTOP-6MN96HR`; в логе `[DESKTOP-6MN96HR]` и строка `Instance DESKTOP-6MN96HR is ready`.
+- Остановлена настоящая БД (`pg_ctl stop -m immediate`): `/livez` 200 (4 мс), `/readyz` 503 (≈3,0 с), `/api/accounts` 503 с телом `SERVICE_UNAVAILABLE`, `8081/actuator/health` 503 `{"status":"DOWN"}`. После запуска БД (она проходила восстановление после аварийной остановки, около 20 с) приложение без перезапуска вернулось: `/readyz` 200, `/api/accounts` 200.
+
+**Ограничения.**
+- Kubernetes-пробы (`livenessProbe`/`readinessProbe` с этими путями, `timeoutSeconds`, `periodSeconds`) настраиваются на этапе 12; здесь проверена только работа endpoint'ов по HTTP.
+- Проверка `/readyz` при недоступной БД занимает ≈3 с (тайм-аут соединения), в манифестах `timeoutSeconds` у readiness-probe должен быть больше этого значения.
+- Порт 8081 по умолчанию свободен на машине пользователя на момент проверки; при конфликте задайте `MANAGEMENT_SERVER_PORT`. Порт 8080 может быть занят службой NI Application Web Server (`SERVER_PORT` для обхода).
+- Метрики (`/actuator/prometheus`), расширенный формат логов и endpoint исследовательских нарушений — этапы 8 и 9.
+- Проверка выполнена на временной БД; на БД пользователя (порт 5432) этап не запускался.
+
+## Этап 8. Метрики и журналы — выполнен
+
+**Изменено / создано:**
+- `pom.xml` — `micrometer-registry-prometheus` (runtime).
+- `application.properties`: `/actuator/prometheus` открыт рядом с `health` (`management.endpoints.web.exposure.include=health,prometheus`), т.е. только на порту управления 8081 (на 8080 — 404); общая метка `application=bank-api`; гистограмма `http.server.requests` (`percentiles-histogram`) для объяснения задержек на уровне Pod; формат журнала `logging.pattern.console=%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX,UTC} %5p [${bank.instance-id}] %logger{36} : %m%n%wEx` (время UTC с суффиксом `Z`, уровень, ID экземпляра, логгер, сообщение); уровень логгера операций `bank.operations` настраивается переменной `LOGGING_LEVEL_BANK_OPERATIONS` (для тяжёлых нагрузочных прогонов можно поставить `WARN`). Прежний `logging.pattern.level` удалён за ненадобностью.
+- Пакет `metrics`:
+  - `OperationType` (`balance_view`, `transfer`), аннотация `@MeasuredOperation`, `MetricsWebConfig` (интерцептор на `/api/**`);
+  - `OperationMetricsInterceptor` — Timer `bank.operations{operation, outcome}` (в Prometheus: `bank_operations_seconds_count/_sum/_max`). Исход определяется по итоговому HTTP-статусу: 2xx → `success` (в т.ч. повтор с 200), 4xx → `business_error` (в т.ч. ошибки валидации, отсутствующий ключ, 404, 409), 5xx или необработанное исключение → `technical_error`. Все 6 серий создаются при старте (значение 0 с первого скрейпа). Единственные метки — `operation` и `outcome` (плюс общая `application`). Операции `balance_view` — оба GET счетов, `transfer` — POST перевода; чтение переводов в бизнес-метрики не входит (остаётся в `http_server_requests`). Клиентские тайм-ауты сервер не видит — их считает только внешний генератор нагрузки.
+  - На каждую измеряемую операцию пишется строка журнала `op=<операция> outcome=<исход> status=<код> duration_ms=<мс>` (логгер `bank.operations`); Idempotency-Key, ID счетов и переводов в неё не попадают.
+- `GlobalExceptionHandler`: при нарушении UNIQUE по ключу сообщение исключения не логируется (в нём полный ключ идемпотентности).
+- Тесты: `OperationMetricsTests` (6: счётчики по исходам для просмотра баланса и перевода — успех, повтор, конфликт ключа, валидация, неизвестный счёт, отсутствие заголовка, недостаток средств; технические ошибки 503/500 при сбое репозитория; длительность записывается; другие endpoint'ы не считаются бизнес-операциями; строка журнала в формате UTC/ID/операция/исход/длительность и отсутствие ключа в выводе), `PrometheusEndpointTests` (4, реальный HTTP, `@AutoConfigureMetrics`: scrape на порту управления отдаётся, на основном — 404; присутствуют JVM-, процессные, системные, HTTP-метрики и метрики пула Hikari; у `bank_operations` ровно метки application/operation/outcome и все 6 серий; в метках нет ID счетов/переводов/ключей — `uri` в шаблонах `/api/accounts/{id}`, `/api/transfers/{id}`).
+
+**Проверка** (временная PostgreSQL 18.4, порт 55432):
+- `./mvnw.cmd -B test`: `Tests run: 54, Failures: 0, Errors: 0`, `BUILD SUCCESS`. По ходу: Spring Boot в тестах по умолчанию отключает экспорт метрик — добавлена `@AutoConfigureMetrics`; `jvm_gc_pause_seconds` появляется только после первой сборки мусора, поэтому в тесте проверяется префикс `jvm_gc_`.
+- Живой прогон приложения на 8080/8081: `/actuator/prometheus` → 404 на 8080 и 200 на 8081. После 3 просмотров баланса (2 успеха, 1 с 404) и 4 переводов (3 успешных, из них один повтор с 200, и один с суммой 0 → 400) метрики показали: `balance_view` success=2, business_error=1; `transfer` success=3, business_error=1, technical_error=0; суммы длительностей > 0. Присутствуют `jvm_memory_used_bytes`, `jvm_threads_live_threads`, `process_cpu_usage`, `process_uptime_seconds`, `system_cpu_usage`, `http_server_requests_seconds_*`, `hikaricp_connections_active`. Значения `uri`: `/api/accounts`, `/api/accounts/{id}`, `/api/transfers`, `/**`. В выводе метрик нет ни 1001/4242, ни фрагментов ключа. Строки журнала вида `2026-10-23T14:32:46.706Z  INFO [DESKTOP-6MN96HR] bank.operations : op=transfer outcome=success status=201 duration_ms=90.044`; секретный ключ запроса в журнале не встречается (0 вхождений).
+
+**Ограничения.**
+- Итоговые научные показатели R и K, перцентили пользовательской задержки и доля клиентских тайм-аутов в приложении не вычисляются (по ТЗ — внешним генератором нагрузки и обработкой результатов).
+- Журнал каждой измеряемой операции на INFO влияет на производительность при высокой нагрузке; для сопоставимости вариантов задайте один и тот же `LOGGING_LEVEL_BANK_OPERATIONS` во всех прогонах.
+- Сам Prometheus и сбор метрик в Kubernetes (ServiceMonitor/аннотации) не настраивались: формат и endpoint проверены curl и тестами.
+- Проверка выполнена на временной БД; на БД пользователя (порт 5432) этап не запускался.
+
+## Этап 9. Управляемая недоступность для исследования — выполнен
+
+**Создано / изменено:**
+- Пакет `research` (все компоненты только в профиле `research`, т.е. при `SPRING_PROFILES_ACTIVE=research`; по умолчанию профиль не включается):
+  - `ResearchFaultEndpoint` — endpoint Actuator `researchfault` на **внутреннем порту управления 8081**: `POST /actuator/researchfault?mode=UNRESPONSIVE&durationSeconds=N` (параметры можно передать и JSON-телом `{"mode":"UNRESPONSIVE","durationSeconds":N}`; Actuator принимает POST только с `Content-Type: application/json`, иначе 415). Допустим только режим `UNRESPONSIVE` (регистр важен) и `durationSeconds` 1..120; иначе 400 и нарушение не включается. Ответ 200 с подтверждением `{instanceId, mode, durationSeconds, startsAt, endsAt, message}` возвращается **до** начала нарушения: окно стартует через 300 мс после подтверждения. Дополнительно `GET` показывает состояние (`active`, `remainingSeconds`, `instanceId`) и `DELETE` досрочно снимает нарушение. Повторный POST заменяет окно.
+  - `ResearchFaultState` — окно нарушения в памяти (границы на `System.nanoTime`), снимается само по истечении времени; при перезапуске Pod исчезает. Включение и окончание пишутся в журнал (`bank.research`, WARN) с ID экземпляра.
+  - `ResearchFaultFilter` — пока окно активно, все запросы `/api/**` этого экземпляра «зависают» (ответ не отправляется, клиент с тайм-аутом сдаётся). Запрос дальше не передаётся, поэтому бизнес-код не выполняется и **банковские данные не меняются**; после окончания окна ещё ожидающие запросы получают 503 `INSTANCE_UNRESPONSIVE` и не исполняются. Статическая страница `/` не затрагивается.
+  - `ResearchFaultHealthIndicator` (`researchFault`): DOWN во время окна.
+- `application-research.properties`: открывает `researchfault` в `management.endpoints.web.exposure.include` и добавляет `researchFault` в группы `liveness` и `readiness`, поэтому `/livez` и `/readyz` на порту 8080 (и `/actuator/health` на 8081) отвечают 503 во время нарушения.
+- `InstanceIdFilter` получил `@Order(HIGHEST_PRECEDENCE)`, чтобы `X-Instance-Id` ставился раньше фильтра нарушения.
+- `GlobalExceptionHandler`: исправлено найденное тестом — ошибки Spring с собственным статусом (415, нет параметра, `ResponseStatusException` из Actuator) больше не превращаются в 500, а отдаются со своим 4xx в общем формате; 5xx по-прежнему `INTERNAL_ERROR`.
+- Тесты: `ResearchFaultTests` (5, реальный HTTP, профили `test`+`research`), в `HealthProbesTests` добавлен тест обычного профиля.
+
+**Проверка** (временная PostgreSQL 18.4, порт 55432):
+- `./mvnw.cmd -B test`: `Tests run: 60, Failures: 0, Errors: 0`, `BUILD SUCCESS`. Тесты: подтверждение с ID экземпляра приходит за < 2 с; во время нарушения `GET /api/accounts` и `POST /api/transfers` не укладываются в клиентский тайм-аут 1 с; `/livez`, `/readyz`, `/actuator/health/liveness|readiness` → 503; управление, статус и `/actuator/prometheus` на порту 8081 отвечают; `/` отвечает; после окончания окна всё возвращается в 200 без перезапуска; перевод, «проглоченный» нарушением, не появился в БД даже после снятия нарушения, число переводов и сумма балансов не изменились; 9 некорректных вызовов (нет параметров, неверный режим, регистр, 0, 121, −5, `abc`) → 400 без включения; границы 1 и 120 допустимы; JSON-тело работает; `DELETE` снимает нарушение досрочно. **Обычный профиль:** бина endpoint и фильтра нет, `POST/GET /actuator/researchfault` → 404 на обоих портах, API и `/livez` работают.
+- Живой прогон (curl, 8080/8081):
+  - обычный запуск: `POST /actuator/researchfault` → 404 на 8081 и 8080, в списке `/actuator` его нет;
+  - профиль `research`: endpoint виден в `/actuator`; без `Content-Type` → 415, `durationSeconds=121` → 400; активация на 12 с → 200 за 6 мс с `instanceId`, `startsAt`, `endsAt`;
+  - во время нарушения: `GET /api/accounts` и `POST /api/transfers` — тайм-аут curl через 2 с (код 28), `/livez` и `/readyz` → 503, `/actuator/health` → 503 `DOWN`, статус → `active:true, remainingSeconds:8` (4 мс), `/actuator/prometheus` → 200, страница `/` → 200;
+  - через 12 с без перезапуска: `/livez`, `/readyz`, API → 200; в БД 0 переводов с ключом тестового запроса, 0 переводов всего, сумма балансов 30 000 000; в журнале две строки WARN (включение и окончание).
+- Побочный результат живой проверки: при первой попытке старый процесс не был остановлен, и второй запуск не смог занять порт 8080 — проверка повторена на чистом окружении (учтено выше).
+
+**Ограничения.**
+- Это **моделируемая недоступность экземпляра**, а не настоящий отказ процесса, узла или взаимная блокировка потоков. Запросы удерживают потоки Tomcat на время окна (при большой нагрузке пул потоков может исчерпаться — тогда пробы тоже не получат ответа).
+- Endpoint предназначен для вызова через `kubectl port-forward` к конкретному Pod и не входит в публичный Service; настройка Kubernetes (порт 8081 только внутри кластера, профиль `research` только в исследовательских Deployment) — этапы 11–12. Защиты аутентификацией нет (по ТЗ — изолированный стенд).
+- Если во время нарушения у Pod настроена liveness-проба, Kubernetes может перезапустить контейнер раньше, чем окончится окно — это и есть изучаемое поведение; в этапе 9 это не проверялось (нет Kubernetes).
+- Проверка выполнена на временной БД; на БД пользователя (порт 5432) этап не запускался.

@@ -2,6 +2,7 @@ package com.example.bankigservicescientific.error;
 
 import java.util.stream.Collectors;
 
+import jakarta.servlet.ServletException;
 import com.example.bankigservicescientific.account.AccountNotFoundException;
 import com.example.bankigservicescientific.transfer.IdempotencyConflictException;
 import com.example.bankigservicescientific.transfer.InsufficientFundsException;
@@ -16,6 +17,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.jdbc.CannotGetJdbcConnectionException;
+import org.springframework.web.ErrorResponse;
+import org.springframework.web.ErrorResponseException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
@@ -61,7 +64,8 @@ public class GlobalExceptionHandler {
     /** Backstop: the UNIQUE constraint on idempotency_key fired although the key lookup found nothing. */
     @ExceptionHandler(DuplicateKeyException.class)
     ResponseEntity<ApiError> duplicateKey(DuplicateKeyException e) {
-        log.warn("Unique constraint violated", e);
+        // Deliberately without the exception: its message contains the full idempotency key.
+        log.warn("Unique constraint violated on transfers (idempotency key)");
         return respond(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_CONFLICT", "Idempotency-Key was already used");
     }
 
@@ -104,6 +108,27 @@ public class GlobalExceptionHandler {
     ResponseEntity<ApiError> databaseUnavailable(Exception e) {
         log.error("Database unavailable", e);
         return respond(HttpStatus.SERVICE_UNAVAILABLE, "SERVICE_UNAVAILABLE", "Service temporarily unavailable");
+    }
+
+    /** Other Spring MVC request errors (415, 406, missing parameter, ...) keep the status Spring chose for them. */
+    @ExceptionHandler(ServletException.class)
+    ResponseEntity<ApiError> servletError(ServletException e) {
+        return e instanceof ErrorResponse errorResponse ? errorResponse(e, errorResponse) : unexpected(e);
+    }
+
+    /** Includes ResponseStatusException, which Actuator endpoints throw for bad parameters (400). */
+    @ExceptionHandler(ErrorResponseException.class)
+    ResponseEntity<ApiError> errorResponseException(ErrorResponseException e) {
+        return errorResponse(e, e);
+    }
+
+    private ResponseEntity<ApiError> errorResponse(Exception e, ErrorResponse errorResponse) {
+        if (!errorResponse.getStatusCode().is4xxClientError()) {
+            return unexpected(e);
+        }
+        HttpStatus status = HttpStatus.valueOf(errorResponse.getStatusCode().value());
+        String code = status == HttpStatus.UNSUPPORTED_MEDIA_TYPE ? "UNSUPPORTED_MEDIA_TYPE" : "INVALID_REQUEST";
+        return respond(status, code, status.getReasonPhrase());
     }
 
     @ExceptionHandler(Exception.class)

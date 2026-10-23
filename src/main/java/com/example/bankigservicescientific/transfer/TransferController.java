@@ -3,6 +3,8 @@ package com.example.bankigservicescientific.transfer;
 import java.util.List;
 import java.util.UUID;
 
+import com.example.bankigservicescientific.metrics.MeasuredOperation;
+import com.example.bankigservicescientific.metrics.OperationType;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +31,7 @@ public class TransferController {
     }
 
     @PostMapping
+    @MeasuredOperation(OperationType.TRANSFER)
     public ResponseEntity<Transfer> create(@RequestHeader("Idempotency-Key") String idempotencyKey,
                                            @Valid @RequestBody TransferRequest request) {
         if (idempotencyKey.isBlank() || idempotencyKey.length() > MAX_KEY_LENGTH) {

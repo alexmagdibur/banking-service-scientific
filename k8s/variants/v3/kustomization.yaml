@@ -1,0 +1,7 @@
+# V2 plus CPU-based autoscaling. CPU requests are fixed in k8s/base/bank-api.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bank
+resources:
+  - ../v2
+  - hpa.yaml

@@ -1,0 +1,69 @@
+# bank-api: one replica, no probes, no HPA (this is the base; V0-V3 are layered on top in stage 12).
+# The image is NOT pulled from a registry: it is imported into K3s's containerd (see README), hence
+# imagePullPolicy IfNotPresent. requests/limits are provisional and must be fixed once, before comparing variants.
+apiVersion: v1
+kind: Service
+metadata:
+  name: bank-api
+  labels:
+    app.kubernetes.io/name: bank-api
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: bank-api
+  ports:
+    # Only the user API is in the Service. The management port 8081 (metrics, research endpoint)
+    # is reachable through kubectl port-forward to a chosen Pod and is deliberately not exposed here.
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-api
+  labels:
+    app.kubernetes.io/name: bank-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bank-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bank-api
+    spec:
+      initContainers:
+        # The application needs the schema at start; wait for PostgreSQL instead of crash-looping.
+        - name: wait-for-db
+          image: postgres:18
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "until pg_isready -h postgres -p 5432 -U \"$DB_USER\"; do echo waiting for postgres; sleep 2; done"]
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: {name: bank-db, key: username}
+      containers:
+        - name: bank-api
+          image: bank-api:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: bank-config
+          env:
+            - name: BANK_DB_USER
+              valueFrom:
+                secretKeyRef: {name: bank-db, key: username}
+            - name: BANK_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: bank-db, key: password}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "1", memory: 512Mi}

@@ -1,0 +1,11 @@
+# Three replicas with probes. The same probes are inherited by V3.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bank
+resources:
+  - ../common
+replicas:
+  - name: bank-api
+    count: 3
+patches:
+  - path: probes.yaml

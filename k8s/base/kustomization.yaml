@@ -1,0 +1,12 @@
+# Base of the stand: PostgreSQL with a persistent volume + one bank-api Deployment and its Service.
+# Apply with:  kubectl apply -k k8s/base      (K3s: sudo k3s kubectl apply -k k8s/base)
+# The experiment variants V0-V3 (stage 12) are built on top of this base without touching the application.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bank
+resources:
+  - namespace.yaml
+  - db-secret.yaml
+  - config.yaml
+  - postgres.yaml
+  - bank-api.yaml

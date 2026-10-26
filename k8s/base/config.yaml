@@ -1,0 +1,11 @@
+# Non-secret settings shared by PostgreSQL and bank-api.
+# The database name appears twice (database and BANK_DB_URL) and must stay equal.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bank-config
+data:
+  database: bank_test
+  BANK_DB_URL: jdbc:postgresql://postgres:5432/bank_test
+  BANK_DB_CONNECTION_TIMEOUT_MS: "3000"
+  LOGGING_LEVEL_BANK_OPERATIONS: INFO

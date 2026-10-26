@@ -1,0 +1,15 @@
+# Keep the build context small and free of local files and secrets.
+target/
+.git/
+.gitignore
+.gitattributes
+.idea/
+.claude/
+.vscode/
+.env
+.env.*
+*.iml
+HELP.md
+*.md
+Dockerfile
+.dockerignore

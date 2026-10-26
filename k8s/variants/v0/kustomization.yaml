@@ -1,0 +1,9 @@
+# One replica; Kubernetes Deployment still replaces a failed Pod.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bank
+resources:
+  - ../common
+replicas:
+  - name: bank-api
+    count: 1

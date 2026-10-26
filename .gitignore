@@ -34,3 +34,7 @@ build/
 
 ### Local secrets ###
 .env
+
+# Raw experiment results (local, potentially large)
+/results/
+bank-api.tar

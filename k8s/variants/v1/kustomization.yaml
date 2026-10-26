@@ -1,0 +1,9 @@
+# Three replicas, no application readiness/liveness/startup probes.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: bank
+resources:
+  - ../common
+replicas:
+  - name: bank-api
+    count: 3

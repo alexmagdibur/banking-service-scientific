@@ -1,0 +1,12 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bank-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: bank-api
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: research
